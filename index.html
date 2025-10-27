@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TaskMaster — Gestor de Tareas Colaborativo (Frontend)</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --muted:#94a3b8; --accent:#7c3aed; --accent-2:#06b6d4; --glass: rgba(255,255,255,0.03);
+      --success:#10b981; --danger:#ef4444; --soft: rgba(255,255,255,0.04);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#061226 0%, #071426 100%);color:#e6eef8}
+    .app{max-width:1100px;margin:28px auto;padding:20px}
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between}
+    h1{font-size:20px;margin:0;display:flex;gap:12px;align-items:center}
+    .logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:grid;place-items:center;font-weight:700}
+    .card{background:linear-gradient(180deg,var(--card), rgba(9,12,16,0.6));padding:16px;border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,0.6);}
+    .auth{display:flex;gap:12px;align-items:center}
+    input,select,textarea,button{font:inherit}
+    .btn{background:var(--accent);border:none;color:white;padding:8px 12px;border-radius:8px;cursor:pointer;transition:transform .14s ease,box-shadow .14s}
+    .btn:active{transform:translateY(1px)}
+    .ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);}
+    .muted{color:var(--muted)}
+
+    /* Layout */
+    .main{display:grid;grid-template-columns:260px 1fr;gap:18px;margin-top:18px}
+    .sidebar{height:calc(100vh - 140px);overflow:auto;padding:12px}
+    .boards-list{display:flex;flex-direction:column;gap:8px}
+    .board-item{padding:10px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--glass);cursor:pointer}
+    .board-item.active{outline:2px solid rgba(124,58,237,0.18)}
+
+    .topbar{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+    .filters{display:flex;gap:8px;align-items:center}
+    .search{flex:1}
+    .controls{display:flex;gap:8px}
+
+    /* Board area */
+    .board{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .column{min-height:300px;padding:12px;border-radius:10px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.03)}
+    .column h3{margin:0 0 8px 0;font-size:14px}
+    .task{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:10px;border-radius:10px;margin-bottom:10px;cursor:grab;border-left:4px solid rgba(255,255,255,0.02);transition:transform .12s ease,box-shadow .12s}
+    .task.dragging{opacity:0.6;transform:scale(.995)}
+    .task .meta{display:flex;gap:8px;align-items:center;justify-content:space-between}
+    .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+    .tag{padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.03);font-size:12px}
+
+    .priority-low{border-left-color:#a3e635}
+    .priority-med{border-left-color:#f59e0b}
+    .priority-high{border-left-color:#ef4444}
+
+    /* forms */
+    .row{display:flex;gap:8px}
+    .field{display:flex;flex-direction:column;gap:6px}
+    label{font-size:12px;color:var(--muted)}
+    input[type=text],input[type=password],select,textarea{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    textarea{min-height:80px}
+
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+
+    /* small screens */
+    @media (max-width:900px){.main{grid-template-columns:1fr} .sidebar{order:2;height:auto}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1><span class="logo">TM</span> TaskMaster <span class="muted">— gestor de tareas colaborativo (sin backend)</span></h1>
+      <div class="auth card" id="authArea">
+        <!-- auth area rendered by JS -->
+      </div>
+    </header>
+
+    <div class="main">
+      <aside class="sidebar card">
+        <div class="topbar">
+          <div style="flex:1">
+            <strong>Tableros</strong>
+            <div class="muted" style="font-size:12px">Crea y comparte tableros</div>
+          </div>
+          <button class="btn ghost" id="btnNewBoard">Nuevo</button>
+        </div>
+        <div class="boards-list" id="boardsList"></div>
+        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.02)">
+        <div class="muted" style="font-size:13px">Colaboración:</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn ghost" id="btnExport">Exportar</button>
+          <button class="btn" id="btnImport">Importar</button>
+        </div>
+        <div style="margin-top:12px;font-size:13px" class="muted">Sin servidor — sincronización en tiempo real entre pestañas (BroadcastChannel). Para colaborar entre dispositivos: exporta el JSON y compártelo.</div>
+      </aside>
+
+      <section class="card" style="padding:14px">
+        <div class="topbar">
+          <div class="search">
+            <input id="q" placeholder="Buscar tareas por título o etiqueta..." style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit">
+          </div>
+          <div class="filters">
+            <select id="filterPriority"><option value="all">Prioridad: Todas</option><option value="low">Baja</option><option value="med">Media</option><option value="high">Alta</option></select>
+            <select id="filterOwner"><option value="all">Responsable: Todos</option></select>
+            <select id="filterTag"><option value="all">Etiqueta: Todas</option></select>
+            <div class="controls">
+              <button class="btn" id="btnNewTask">+ Tarea</button>
+              <button class="btn ghost" id="btnClearCompleted">Limpiar completadas</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="boardArea" class="board"></div>
+      </section>
+    </div>
+
+    <footer class="muted card" style="margin-top:18px">TaskMaster — Demo frontend-only • Uso: abre este archivo en tu navegador. Soporta múltiples usuarios locales, sincronización entre pestañas (mismo navegador) y export/import JSON para compartir entre dispositivos.</footer>
+  </div>
+
+  <!-- Modals (simple) -->
+  <div id="modalRoot"></div>
+
+  <script>
+  // ---------- Utilities ----------
+  const uid = (n=8)=>Math.random().toString(36).slice(2,2+n);
+  const $ = sel=>document.querySelector(sel);
+  const createEl = (tag,attrs={})=>{const e=document.createElement(tag);for(const k in attrs) e.setAttribute(k,attrs[k]);return e}
+
+  // Simple storage wrapper
+  const DBKEY = 'taskmaster_v1';
+  function loadDB(){try{return JSON.parse(localStorage.getItem(DBKEY))||{users:[],boards:[],sessions:{}}}catch(e){return {users:[],boards:[],sessions:{}}}}
+  function saveDB(db){localStorage.setItem(DBKEY,JSON.stringify(db))}
+
+  let DB = loadDB();
+
+  // ---------- Authentication (local-only) ----------
+  async function hashPass(pass){const enc=new TextEncoder();const res=await crypto.subtle.digest('SHA-256',enc.encode(pass));const arr=Array.from(new Uint8Array(res));return arr.map(b=>b.toString(16).padStart(2,'0')).join('')}
+
+  function currentSession(){return DB.sessions.currentUser||null}
+  function setSession(username){DB.sessions.currentUser=username;saveDB(DB);renderAuth()}
+  function logout(){delete DB.sessions.currentUser;saveDB(DB);renderAuth();renderBoard()}
+
+  async function register(username,password){username=username.trim().toLowerCase();if(!username||!password) throw 'Usuario o contraseña inválidos';if(DB.users.find(u=>u.username===username)) throw 'Usuario ya existe';const passHash=await hashPass(password);DB.users.push({username,passHash,created:Date.now()});saveDB(DB);setSession(username)}
+  async function login(username,password){username=username.trim().toLowerCase();const u=DB.users.find(x=>x.username===username);if(!u) throw 'Usuario no existe';const passHash=await hashPass(password);if(passHash!==u.passHash) throw 'Contraseña incorrecta';setSession(username)}
+
+  // ---------- Board & Tasks model ----------
+  function ensureDefault(){if(DB.boards.length===0){const b={id:uid(6),name:'Mi Tablero',created:Date.now(),tasks:[],members:[],meta:{}};DB.boards.push(b);saveDB(DB)} }
+  ensureDefault();
+
+  function getBoard(id){return DB.boards.find(b=>b.id===id)||DB.boards[0]}
+  function saveBoard(board){const idx=DB.boards.findIndex(b=>b.id===board.id);if(idx===-1) DB.boards.push(board); else DB.boards[idx]=board;saveDB(DB)}
+
+  function addBoard(name){const b={id:uid(6),name:name||'Tablero '+(DB.boards.length+1),created:Date.now(),tasks:[],members:[],meta:{}};DB.boards.push(b);saveDB(DB);renderBoards();selectBoard(b.id)}
+  function deleteBoard(id){DB.boards=DB.boards.filter(b=>b.id!==id);saveDB(DB);renderBoards();selectBoard(DB.boards[0]?.id)}
+
+  function addTask(boardId,task){const b=getBoard(boardId);b.tasks.unshift(task);saveBoard(b);broadcastBoard(boardId)}
+  function updateTask(boardId,taskId,patch){const b=getBoard(boardId);const t=b.tasks.find(x=>x.id===taskId);if(!t) return;Object.assign(t,patch);saveBoard(b);broadcastBoard(boardId)}
+  function removeTask(boardId,taskId){const b=getBoard(boardId);b.tasks=b.tasks.filter(x=>x.id!==taskId);saveBoard(b);broadcastBoard(boardId)}
+
+  // ---------- Sync (BroadcastChannel for same-origin tabs) ----------
+  const channels = {};
+  function ensureChannel(boardId){if(channels[boardId]) return channels[boardId];try{const ch=new BroadcastChannel('taskmaster-'+boardId);ch.onmessage=(ev)=>{if(ev.data?.type==='sync' && ev.data?.board){const incoming=ev.data.board;const local=getBoard(boardId);if(!local || incoming.updated> (local.updated||0)){ // accept incoming
+        const idx=DB.boards.findIndex(b=>b.id===boardId);
+        if(idx===-1) DB.boards.push(incoming); else DB.boards[idx]=incoming; saveDB(DB); if(getSelectedBoardId()===boardId) renderBoard(); renderBoards();}
+      }};channels[boardId]=ch;return ch}catch(e){console.warn('BroadcastChannel no disponible',e);return null}}
+  function broadcastBoard(boardId){const ch=ensureChannel(boardId);const b=getBoard(boardId);b.updated=Date.now();saveBoard(b);if(ch) ch.postMessage({type:'sync',board:b});}
+
+  // ---------- UI Rendering ----------
+  let selectedBoardId = getBoard().id;
+  function getSelectedBoardId(){return selectedBoardId}
+  function selectBoard(id){selectedBoardId=id;renderBoards();renderBoard();ensureChannel(id)}
+
+  function renderAuth(){const root = $('#authArea');root.innerHTML='';const user = currentSession(); if(user){
+      const span=createEl('div');span.innerHTML=`<div style="min-width:220px"><strong>${user}</strong><div class='muted' style='font-size:12px'>Conectado</div></div>`;
+      root.appendChild(span);
+      const btnOut=createEl('button');btnOut.className='btn ghost';btnOut.textContent='Cerrar sesión';btnOut.onclick=logout;root.appendChild(btnOut);
+    } else {
+      const form=createEl('div');form.style.display='flex';form.style.gap='8px';
+      const u=createEl('input');u.placeholder='usuario';u.style.padding='8px';
+      const p=createEl('input');p.placeholder='contraseña';p.type='password';p.style.padding='8px';
+      const btnIn=createEl('button');btnIn.className='btn';btnIn.textContent='Entrar';btnIn.onclick=async ()=>{try{await login(u.value,p.value);}catch(e){alert(e)} };
+      const btnReg=createEl('button');btnReg.className='btn ghost';btnReg.textContent='Registro';btnReg.onclick=async ()=>{try{await register(u.value,p.value);}catch(e){alert(e)} };
+      form.appendChild(u);form.appendChild(p);form.appendChild(btnIn);form.appendChild(btnReg);root.appendChild(form);
+    }}
+
+  function renderBoards(){const list = $('#boardsList');list.innerHTML='';DB.boards.forEach(b=>{
+      const it=createEl('div');it.className='board-item'+(b.id===selectedBoardId?' active':'');it.onclick=()=>selectBoard(b.id);
+      it.innerHTML=`<div><strong>${escapeHtml(b.name)}</strong><div class='muted' style='font-size:12px'>${b.tasks.length} tareas</div></div>`;
+      const tools=createEl('div');tools.style.display='flex';tools.style.gap='6px';
+      const btnShare=createEl('button');btnShare.className='btn ghost';btnShare.textContent='⋯';btnShare.title='Opciones';btnShare.onclick=(ev)=>{ev.stopPropagation();openBoardOptions(b)};
+      tools.appendChild(btnShare);it.appendChild(tools);list.appendChild(it);
+    })}
+
+  function openBoardOptions(board){const html = `<div style='display:flex;flex-direction:column;gap:8px'><button id='rename'>Renombrar</button><button id='del'>Eliminar</button></div>`;
+    showModal('Opciones de tablero',html,async (m)=>{
+      m.querySelector('#rename').onclick=()=>{const val=prompt('Nuevo nombre',board.name); if(val){board.name=val;saveBoard(board);renderBoards();closeModal();}};
+      m.querySelector('#del').onclick=()=>{if(confirm('Eliminar tablero?')){deleteBoard(board.id);closeModal();}};
+    });}
+
+  function renderBoard(){const area = $('#boardArea');area.innerHTML='';const board = getBoard(selectedBoardId);
+    if(!board) return area.innerHTML='<div class="muted">Tablero no encontrado</div>';
+
+    // build owner filter
+    const owners = Array.from(new Set([...(board.members||[]), ...(DB.users.map(u=>u.username))]));
+    const ownerSel = $('#filterOwner'); ownerSel.innerHTML='<option value="all">Responsable: Todos</option>';
+    owners.forEach(o=>{const opt=document.createElement('option');opt.value=o;opt.textContent=o;ownerSel.appendChild(opt)});
+    // tags
+    const tags = Array.from(new Set(board.tasks.flatMap(t=>t.tags||[])));
+    const tagSel = $('#filterTag'); tagSel.innerHTML='<option value="all">Etiqueta: Todas</option>';
+    tags.forEach(t=>{const opt=document.createElement('option');opt.value=t;opt.textContent=t;tagSel.appendChild(opt)});
+
+    const q = $('#q').value.toLowerCase(); const pr = $('#filterPriority').value; const ownerF = $('#filterOwner').value; const tagF = $('#filterTag').value;
+
+    const columns = ['pendiente','en progreso','completada'];
+    columns.forEach(col=>{
+      const colEl = createEl('div');colEl.className='column card';colEl.dataset.status=col; const title = col==='pendiente'? 'Pendiente' : col==='en progreso' ? 'En progreso' : 'Completada';
+      colEl.innerHTML=`<h3>${title}</h3><div class='muted' style='font-size:12px;margin-bottom:8px'>Arrastra tareas entre columnas</div><div class='col-list'></div>`;
+      // allow drop
+      colEl.addEventListener('dragover',ev=>{ev.preventDefault();colEl.classList.add('drop-hint')});
+      colEl.addEventListener('dragleave',ev=>{colEl.classList.remove('drop-hint')});
+      colEl.addEventListener('drop',ev=>{ev.preventDefault();colEl.classList.remove('drop-hint');const taskId = ev.dataTransfer.getData('text/taskid'); if(taskId){updateTask(board.id,taskId,{status:col})}});
+
+      const listEl = colEl.querySelector('.col-list');
+      // filter tasks
+      const tasks = board.tasks.filter(t=>t.status===col).filter(t=>{
+        if(pr!=='all' && t.priority!==pr) return false;
+        if(ownerF!=='all' && t.owner!==ownerF) return false;
+        if(tagF!=='all' && !(t.tags||[]).includes(tagF)) return false;
+        if(q && !(t.title.toLowerCase().includes(q) || (t.tags||[]).some(tt=>tt.toLowerCase().includes(q)))) return false;
+        return true;
+      });
+
+      tasks.forEach(t=>{
+        const te = createEl('div');te.className='task '+(t.priority==='low'?'priority-low':t.priority==='med'?'priority-med':'priority-high');te.draggable=true;te.dataset.id=t.id;
+        te.ondragstart=(ev)=>{ev.dataTransfer.setData('text/taskid',t.id);te.classList.add('dragging')};
+        te.ondragend=()=>te.classList.remove('dragging');
+        te.innerHTML=`<div style='display:flex;justify-content:space-between;align-items:start'><div><strong>${escapeHtml(t.title)}</strong><div class='muted' style='font-size:12px'>${escapeHtml(t.description||'')}</div></div><div style='text-align:right'><div class='muted' style='font-size:12px'>${t.owner||'—'}</div><div style='font-size:12px;margin-top:6px' class='muted'>${new Date(t.created).toLocaleString()}</div></div></div>`;
+        const tagsEl = createEl('div');tagsEl.className='tags';(t.tags||[]).forEach(tag=>{const tg=createEl('span');tg.className='tag';tg.textContent=tag;tagsEl.appendChild(tg)});te.appendChild(tagsEl);
+        const actions = createEl('div');actions.style.display='flex';actions.style.gap='6px';actions.style.marginTop='8px';
+        const btnEdit=createEl('button');btnEdit.className='btn ghost';btnEdit.textContent='Editar';btnEdit.onclick=()=>openTaskModal(board.id,t);
+        const btnDel=createEl('button');btnDel.className='btn ghost';btnDel.textContent='Borrar';btnDel.onclick=()=>{if(confirm('Borrar tarea?')){removeTask(board.id,t.id);renderBoard();}}
+        actions.appendChild(btnEdit);actions.appendChild(btnDel);te.appendChild(actions);
+        listEl.appendChild(te);
+      });
+
+      area.appendChild(colEl);
+    });
+  }
+
+  // ---------- Modals & Forms ----------
+  function showModal(title,htmlContent,onReady){const root=$('#modalRoot');root.innerHTML='';const wrap=createEl('div');wrap.style.position='fixed';wrap.style.inset=0;wrap.style.display='grid';wrap.style.placeItems='center';wrap.style.background='rgba(0,0,0,0.4)';wrap.onclick=(e)=>{if(e.target===wrap) closeModal()};
+    const box=createEl('div');box.className='card';box.style.width='520px';box.style.maxWidth='92%';box.innerHTML=`<h3 style='margin-top:0'>${title}</h3><div id='modalContent'>${htmlContent}</div><div style='display:flex;gap:8px;justify-content:flex-end;margin-top:12px'><button id='modalClose' class='btn ghost'>Cerrar</button></div>`;
+    wrap.appendChild(box);root.appendChild(wrap);box.querySelector('#modalClose').onclick=closeModal; if(onReady) onReady(box);}
+  function closeModal(){$('#modalRoot').innerHTML=''}
+
+  function openTaskModal(boardId,task){const editing=!!task; const owners = Array.from(new Set([...(getBoard(boardId).members||[]), ...DB.users.map(u=>u.username)]));
+    const html = `<div style='display:flex;flex-direction:column;gap:8px'><label>Título<input id='t_title' value='${editing?escapeHtml(task.title):''}'></label><label>Descripción<textarea id='t_desc'>${editing?escapeHtml(task.description||''):''}</textarea></label><div class='row'><div style='flex:1'><label>Prioridad<select id='t_prio'><option value='low'>Baja</option><option value='med'>Media</option><option value='high'>Alta</option></select></label></div><div style='flex:1'><label>Estado<select id='t_status'><option value='pendiente'>Pendiente</option><option value='en progreso'>En progreso</option><option value='completada'>Completada</option></select></label></div></div><label>Etiquetas (separadas por coma)<input id='t_tags' value='${editing?escapeHtml((task.tags||[]).join(", ")):''}'></label><label>Responsable<select id='t_owner'><option value=''>— Ninguno —</option>${owners.map(o=>`<option value='${o}' ${editing && task.owner===o? 'selected':''}>${o}</option>`).join('')}</select></label><div style='display:flex;gap:8px;justify-content:flex-end'><button id='saveTask' class='btn'>Guardar</button></div></div>`;
+    showModal(editing? 'Editar tarea' : 'Nueva tarea',html,(m)=>{
+      if(editing){m.querySelector('#t_prio').value=task.priority||'med';m.querySelector('#t_status').value=task.status||'pendiente'};
+      m.querySelector('#saveTask').onclick=()=>{const title=m.querySelector('#t_title').value.trim(); if(!title){alert('Título requerido');return;} const description=m.querySelector('#t_desc').value.trim(); const priority=m.querySelector('#t_prio').value; const status=m.querySelector('#t_status').value; const tags=m.querySelector('#t_tags').value.split(',').map(s=>s.trim()).filter(Boolean); const owner=m.querySelector('#t_owner').value||null; if(editing){updateTask(boardId,task.id,{title,description,priority,status,tags,owner});} else {const t={id:uid(8),title,description,priority,status,tags,owner,created:Date.now()};addTask(boardId,t);} closeModal(); renderBoard();};
+    });}
+
+  // ---------- Helpers ----------
+  function escapeHtml(s){return (s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}
+
+  // ---------- Events ----------
+  document.getElementById('btnNewBoard').onclick=()=>{const name=prompt('Nombre del tablero','Nuevo Tablero'); if(name) addBoard(name)};
+  document.getElementById('btnNewTask').onclick=()=>{ if(!currentSession()){if(!confirm('Necesitas iniciar sesión. Crear usuario temporal?')) return; const u='guest_'+uid(4); DB.users.push({username:u,passHash:'',created:Date.now()}); saveDB(DB); setSession(u);} openTaskModal(selectedBoardId,null)};
+  document.getElementById('q').addEventListener('input',()=>renderBoard());
+  document.getElementById('filterPriority').addEventListener('change',()=>renderBoard());
+  document.getElementById('filterOwner').addEventListener('change',()=>renderBoard());
+  document.getElementById('filterTag').addEventListener('change',()=>renderBoard());
+  document.getElementById('btnClearCompleted').onclick=()=>{const b=getBoard(selectedBoardId);b.tasks=b.tasks.filter(t=>t.status!=='completada');saveBoard(b);renderBoard();broadcastBoard(selectedBoardId)};
+
+  document.getElementById('btnExport').onclick=()=>{const b=getBoard(selectedBoardId);const payload=JSON.stringify(b); const w=window.open('about:blank','_blank'); w.document.write('<pre>'+escapeHtml(payload)+'</pre>');};
+  document.getElementById('btnImport').onclick=()=>{const txt=prompt('Pega JSON del tablero (exportado)'); if(!txt) return; try{const incoming=JSON.parse(txt); incoming.id = incoming.id || uid(6); DB.boards.push(incoming); saveDB(DB); renderBoards(); selectBoard(incoming.id); alert('Tablero importado.');}catch(e){alert('JSON inválido') }};
+
+  // initial render
+  renderAuth(); renderBoards(); selectBoard(selectedBoardId);
+
+  // expose for dev/debug
+  window.__TM = {DB,saveDB,getBoard,addBoard,addTask,updateTask};
+  </script>
+</body>
+</html>
